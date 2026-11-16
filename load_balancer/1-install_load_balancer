@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Installs and configures HAProxy (roundrobin) for web-01 and web-02
+
+sudo apt-get update -y
+sudo apt-get install -y haproxy
+
+# Allow management through the init script
+sudo sed -i 's/^ENABLED=.*/ENABLED=1/' /etc/default/haproxy
+grep -q '^ENABLED=' /etc/default/haproxy || echo 'ENABLED=1' | sudo tee -a /etc/default/haproxy > /dev/null
+
+sudo cp -n /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.orig
+
+sudo tee /etc/haproxy/haproxy.cfg > /dev/null << 'CFG'
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    log global
+    mode http
+    option httplog
+    option dontlognull
+    timeout connect 5000
+    timeout client 50000
+    timeout server 50000
+
+frontend http-in
+    bind *:80
+    default_backend web-backend
+
+backend web-backend
+    balance roundrobin
+    server 7234-web-01 3.8.119.106:80 check
+    server 7234-web-02 18.175.146.19:80 check
+CFG
+
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg
+sudo service haproxy restart
+sudo update-rc.d haproxy enable
